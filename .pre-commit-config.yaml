@@ -1,0 +1,42 @@
+# pip install pre-commit && pre-commit install
+# Catches things at the only moment removing them is free: before the commit.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=5120]
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Strip notebook output: it makes diffs unreviewable and can carry
+  # participant-level values.
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+
+  - repo: local
+    hooks:
+      - id: hygiene
+        name: repo hygiene
+        entry: bash scripts/check_hygiene.sh
+        language: system
+        pass_filenames: true

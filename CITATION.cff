@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+title: <REPO NAME>
+abstract: <One sentence. Same as the GitHub description.>
+type: software
+license: MIT
+repository-code: https://github.com/Huang-lab/<repo>
+url: https://github.com/Huang-lab/<repo>
+authors:
+  - family-names: <Family>
+    given-names: <Given>
+    orcid: https://orcid.org/0000-0000-0000-0000
+    affiliation: Icahn School of Medicine at Mount Sinai
+  - family-names: Huang
+    given-names: Kuan-lin
+    affiliation: Icahn School of Medicine at Mount Sinai
+keywords:
+  - <keyword>
+version: 0.1.0
+date-released: 2026-01-01
+# Add once a paper exists, so `cite this repository` points at the paper:
+# preferred-citation:
+#   type: article
+#   title: <Paper title>
+#   journal: <Journal>
+#   year: 2026
+#   doi: <doi>
+#   authors:
+#     - family-names: <Family>
+#       given-names: <Given>

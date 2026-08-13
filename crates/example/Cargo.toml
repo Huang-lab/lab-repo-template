@@ -1,0 +1,12 @@
+[package]
+name = "example"
+description = "Rename this crate. One crate per concern; the binary crate stays thin."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]

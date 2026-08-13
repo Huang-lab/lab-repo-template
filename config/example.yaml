@@ -1,0 +1,21 @@
+# Run configuration. Paths live here, never hardcoded in scripts.
+# Copy per run; the config is part of a result's provenance.
+
+run:
+  name: example
+  seed: 20260813
+
+paths:
+  # Absolute cluster paths - see data/README.md
+  raw: /path/to/raw
+  ref: /path/to/ref
+  results: results
+
+cohort:
+  index_date_col: index_date
+  # State the UNKNOWN policy explicitly (DD-01); the code refuses to guess.
+  unknown_eligibility_as: false
+
+# YAML gotcha worth knowing: adding a key above a block at the same indent level
+# can silently reparent the blocks below it. Validate config on load rather than
+# trusting the file - a lab repo lost a run to exactly this.

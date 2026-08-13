@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+# Shared metadata and dependency versions. Member crates use
+# `version.workspace = true` / `dep.workspace = true` so a bump happens once.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+repository = "https://github.com/Huang-lab/<repo>"
+
+[workspace.dependencies]
+
+[profile.release]
+# Analysis tools are usually run once on a large input, so trading compile time
+# for runtime is the right default.
+lto = "thin"
+codegen-units = 1

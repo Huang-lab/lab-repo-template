@@ -1,0 +1,136 @@
+name: CI
+
+# Language jobs are gated on file detection, so deleting a scaffold you do not
+# need also removes its CI job. The hygiene job runs in every repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tracked files
+        run: bash scripts/check_hygiene.sh
+
+  detect:
+    name: Detect languages
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.detect.outputs.python }}
+      r: ${{ steps.detect.outputs.r }}
+      rust: ${{ steps.detect.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          set -eu
+          py=false; r=false; rust=false
+          { [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ]; } && py=true
+          [ -d R ] && r=true
+          [ -f Cargo.toml ] && rust=true
+          echo "python=$py" >> "$GITHUB_OUTPUT"
+          echo "r=$r"       >> "$GITHUB_OUTPUT"
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "python=$py r=$r rust=$rust"
+
+  python:
+    name: Python
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then
+            pip install -e '.[dev]'
+          else
+            pip install -r requirements.txt pytest ruff
+          fi
+      - name: Lint
+        run: ruff check .
+      - name: Format check
+        run: ruff format --check .
+      - name: Test
+        # Not `pytest src`: collect from the repo root so tests/ is included.
+        run: pytest --cov --cov-report=term-missing
+
+  r:
+    name: R
+    needs: detect
+    if: needs.detect.outputs.r == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+      - name: Install testthat
+        run: Rscript -e 'install.packages("testthat")'
+      - name: Test
+        # stop_on_failure defaults to TRUE, so a failing test errors and Rscript
+        # exits non-zero. helper-load.R sources R/ so no packaging step is needed.
+        run: Rscript -e 'testthat::test_dir("tests/testthat")'
+
+  rust:
+    name: Rust
+    needs: detect
+    if: needs.detect.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        # --all-targets is load-bearing. `cargo test --workspace --lib` skips
+        # every integration test under tests/, which is how fastVEP ran four
+        # test files' worth of nothing for months.
+        run: cargo test --workspace --all-targets
+
+  ci-ok:
+    # Single required status check for branch protection: stays green when a
+    # language job is legitimately skipped, red when one fails.
+    name: CI OK
+    if: always()
+    needs: [hygiene, detect, python, r, rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": "failure"'; then
+            echo "A required job failed."; exit 1
+          fi
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": "cancelled"'; then
+            echo "A required job was cancelled."; exit 1
+          fi
+          echo "All jobs passed or were skipped."

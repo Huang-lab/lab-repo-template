@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "analysis"
+version = "0.1.0"
+description = "<One sentence. Same as the GitHub description.>"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    # Pin ranges, not exact versions, for analysis code. Exact pins belong in a
+    # lock file or environment.yml so a reader can reproduce a specific run.
+    # "pandas>=2.0",
+    # "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "gate: fails by design until a human enters ground-truth values (see CONVENTIONS.md#tests)",
+    "slow: excluded from the default CI run",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "steps", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle, pyflakes
+    "I",            # import sorting
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "SIM",          # simplify
+    "PTH",          # prefer pathlib over os.path
+    "RUF",
+]
+ignore = [
+    "E501",  # line length is handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Step drivers are scripts: top-level statements and prints are the point.
+"steps/*.py" = ["T201"]
+
+[tool.coverage.run]
+source = ["src"]

@@ -1,0 +1,17 @@
+Package: analysis
+Title: <One sentence, same as the GitHub description>
+Version: 0.1.0
+Authors@R: c(
+    person("Given", "Family", email = "you@mssm.edu", role = c("aut", "cre")),
+    person("Kuan-lin", "Huang", email = "kuan-lin.huang@mssm.edu", role = "aut")
+  )
+Description: Declares this project's R dependencies so that renv::restore() and
+    CI can reconstruct the environment. The project is not built or installed as
+    a package - tests source R/ directly via tests/testthat/helper-load.R.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+Suggests:
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3

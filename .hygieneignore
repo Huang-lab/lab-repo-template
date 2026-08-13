@@ -1,0 +1,2 @@
+# Exact paths exempt from scripts/check_hygiene.sh, one per line.
+# Keep this list short and justify each entry in a comment.
