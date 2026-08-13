@@ -1,41 +1,38 @@
 # New repo checklist
 
-Delete this file when you reach the bottom.
+Delete this file when done.
 
-1. **Name it.** Kebab-case unless it's a published tool ([why](./CONVENTIONS.md#repository-names)).
+**1. Cut first.** Keep what fits your project, delete the rest. CI detects languages by file presence, so deleting a scaffold removes its job too.
 
-2. **Replace the README.**
-   ```sh
-   mv docs/README_SKELETON.md README.md && rm SETUP.md
-   ```
+```sh
+rm -rf R DESCRIPTION tests/testthat crates Cargo.toml          # not R or Rust
+rm -rf src steps tests/test_*.py pyproject.toml                # not Python
+rm -rf docs config .pre-commit-config.yaml .github/dependabot.yml   # if unused
+rm CONVENTIONS.md CONTRIBUTING.md                              # if you won't follow them
+```
 
-3. **License.** MIT ships by default. For a tool meant for wide adoption, swap in Apache-2.0 (patent grant) from <https://www.apache.org/licenses/LICENSE-2.0.txt>.
+Keep `.gitignore`, `LICENSE`, and - if the repo will ever go public - `scripts/`.
 
-4. **Delete unused scaffolds** - CI detects languages by file presence, so this removes their jobs too.
-   ```sh
-   rm -rf R DESCRIPTION tests/testthat crates Cargo.toml   # Python only
-   rm -rf src steps tests/test_*.py pyproject.toml crates Cargo.toml   # R only
-   rm -rf src steps R DESCRIPTION tests pyproject.toml     # Rust only
-   ```
+**2. Replace the README.** `mv docs/README_SKELETON.md README.md && rm SETUP.md`
 
-5. **Set your git identity in this checkout.** Prevents the lab's two attribution failures: agents committing as themselves, humans committing under a machine-local email GitHub can't link.
-   ```sh
-   git config user.name  "Your Name"
-   git config user.email "the-address-on-your-github-account@example.org"
-   git config --get user.email   # if this ends in .local or a hostname, fix it
-   ```
+**3. Set your git identity here.** The one step everyone should do - it prevents agents committing as themselves and humans committing under an email GitHub can't link.
 
-6. **Hooks.** `pip install pre-commit && pre-commit install`
+```sh
+git config user.name "Your Name" && git config user.email "your-github-email@mssm.edu"
+git config --get user.email   # ends in .local or a hostname? fix it
+```
 
-7. **Fill in `CITATION.cff`.**
+**4. License.** MIT ships by default; swap in [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) for a tool meant for wide adoption.
 
-8. **Branch protection** (any repo backing a manuscript or going public):
-   ```sh
-   gh api -X PUT repos/Huang-lab/<repo>/branches/main/protection \
-     --input .github/branch-protection.json
-   ```
+**5. Optional extras.**
 
-9. **Write down where data lives** in [data/README.md](./data/README.md). Paths go there, not in scripts.
+```sh
+pip install pre-commit && pre-commit install     # hooks
+gh api -X PUT repos/Huang-lab/<repo>/branches/main/protection \
+  --input .github/branch-protection.json         # branch protection
+```
 
-10. **Before going public or submitting:** `./scripts/scan_history.sh --full`
-    `.gitignore` does not remove what's already committed, and the fix (`git filter-repo` + force push) only works cleanly before external forks exist.
+Also worth it: fill in `CITATION.cff`, and note where data lives in `data/README.md`.
+
+**6. Before going public or submitting:** `./scripts/scan_history.sh --full`
+`.gitignore` doesn't remove what's already committed, and the fix (`git filter-repo` + force push) only works cleanly before external forks exist.

@@ -1,19 +1,19 @@
 # Results
 
-Committed only when frozen. Frozen means a directory that is never overwritten.
+Commit outputs only when frozen - a directory that is never overwritten.
 
 ```
 results/
-  results-2026-08-13/     # a complete run, never edited after it lands
-  results-2026-09-02/     # a later run, its own directory
+  results-2026-08-13/
+  results-2026-09-02/     # a rerun writes a new directory
 ```
 
-`src/analysis/results.py` (`results_dir`, `freeze`) and `R/utils.R` enforce this in code.
+`src/analysis/results.py` (`results_dir`, `freeze`) and `R/utils.R` enforce this in code. Delete them if you'd rather not.
 
-**Why:** a rerun that overwrites in place produces a diff reading as a code change. Two years later, when the figure is in a supplement, nobody can tell which numbers are in the paper.
+**Why:** overwriting in place produces a diff that reads as a code change. Two years later, when the figure is in a supplement, nobody can tell which numbers are in the paper.
 
-**Commit:** small tables and figures backing a manuscript claim, plus run metadata.
-**Don't commit:** anything large (5 MB check in `check_hygiene.sh`), regenerable intermediates, participant-level output.
+**Commit:** small tables and figures backing a claim, plus run metadata.
+**Don't:** anything large, regenerable intermediates, participant-level output.
 
 ## Provenance stub - one per results directory
 
@@ -21,7 +21,7 @@ results/
 - Run by:       <name>
 - Code version: <git rev-parse --short HEAD>
 - Config:       config/<file>.yaml
-- Inputs:       /sc/arion/projects/<project>/raw/<file> (md5 <...>)
+- Inputs:       <path> (md5 <...>)
 - Command:      python steps/03_model.py --config config/<file>.yaml
 - Notes:        <what changed since the previous run, and why>
 ```
