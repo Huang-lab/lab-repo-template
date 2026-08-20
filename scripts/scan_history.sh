@@ -33,6 +33,17 @@ hdr()  { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
 # Patterns worth finding. Tune per project - a genomics repo has different
 # identifiers than an EHR repo.
+#
+# These are POSIX ERE, because `git grep -E` compiles them with the system
+# regcomp and NOT with PCRE. `\s` is a PCRE/GNU-grep extension: POSIX ERE reads
+# it as a literal `s`, silently and without an error. Use `[[:space:]]`.
+#
+# This is not a style point. The rule below used to read
+# `password\s*[=:]\s*["'"'"'][^"'"'"']`, which POSIX expands to "password",
+# then zero or more literal `s`, then `[=:]` - so it matched `password:"x"` and
+# missed `password: "x"` and `password = "x"`. Those are the two ways anyone
+# actually writes it. A real database password sat in a public lab repo for 665
+# days and this scanner, run over full history, reported nothing.
 PATTERNS=(
     '/sc/arion/'                      # Minerva project and scratch paths
     '/hpc/users/'                     # Minerva home paths
@@ -45,7 +56,18 @@ PATTERNS=(
     'sk-[A-Za-z0-9]{20,}'             # OpenAI-style key
     'sk-ant-[A-Za-z0-9-]{20,}'        # Anthropic key
     'BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY'
-    'password\s*[=:]\s*["'"'"'][^"'"'"']'
+    # An assignment of a quoted literal to a secret-ish name. The trailing
+    # [^"'"'"'] rejects the empty string, so `password: ""` in a .env.example
+    # does not fire.
+    '(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key)[[:space:]]*[=:][[:space:]]*["'"'"'][^"'"'"']'
+    # A .env-style line with a literal value. Anchored and upper-case on
+    # purpose: `PASSWORD = args.password` in code is a false positive, a line
+    # that starts `DB_PASSWORD=hunter2` is not. `$` and `{` exclude
+    # `PASSWORD=${PASSWORD}` and `PASSWORD=$(...)`; requiring one character
+    # after `=` excludes the empty `password=` of a .env.example.
+    '^[A-Z_]*(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z_]*=[^[:space:]$#{]'
+    # Credentials inside a URL: postgres://user:hunter2@host.
+    '://[^/[:space:]:@]+:[^/[:space:]@]+@'
 )
 
 # Paths excluded from the content scan: the scanner itself, plus anything listed
