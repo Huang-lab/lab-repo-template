@@ -84,6 +84,21 @@ fi
 
 # ---------------------------------------------------------------------------
 # 4. Private keys and obvious secrets.
+#
+#    Until now this checked for PEM private-key headers and nothing else, which
+#    left the commonest leak - a password typed straight into a config file -
+#    with no gate at all. `scan_history.sh` nominally covered it, but that runs
+#    by hand and only reaches history under `--full`. One such credential sat in
+#    a public lab repo for 665 days.
+#
+#    So: this is the pre-commit and CI gate, and it now looks for a quoted
+#    literal assigned to a secret-ish name, a .env-style line with a literal
+#    value, and credentials embedded in a URL.
+#
+#    Patterns are POSIX ERE. `\s` is a PCRE extension that POSIX reads as a
+#    literal `s`, silently - which is exactly how the old rule in
+#    scan_history.sh matched `password:"x"` while missing `password: "x"`. Use
+#    [[:space:]].
 # ---------------------------------------------------------------------------
 KEYS=""
 while IFS= read -r f; do
@@ -98,6 +113,35 @@ $FILES
 EOF
 if [ -n "$KEYS" ]; then
     fail "Private key material:" "$KEYS"
+fi
+
+SECRET_RE='(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)[[:space:]]*[=:][[:space:]]*["'"'"'][^"'"'"']'
+ENVLINE_RE='^[A-Z_]*(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z_]*=[^[:space:]$#{]'
+URLCRED_RE='://[^/[:space:]:@]+:[^/[:space:]@]+@'
+SECRETS=""
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    allowed "$f" && continue
+    # An example file is meant to name the variables; its values are empty or
+    # placeholders. Excluded by name so nobody has to add each one to
+    # .hygieneignore. The two scanners are excluded because they contain the
+    # patterns themselves - scan_history.sh already excludes both from its own
+    # content scan for the same reason.
+    case "$f" in
+        scripts/check_hygiene.sh|scripts/scan_history.sh) continue ;;
+        *.example|*.example.*|*.sample|*.template|*.md|*.rst) continue ;;
+    esac
+    hit=$(grep -nEm1 "$SECRET_RE|$ENVLINE_RE|$URLCRED_RE" "$f" 2>/dev/null || true)
+    if [ -n "$hit" ]; then
+        # Report the file and line, never the value.
+        SECRETS="$SECRETS$f:${hit%%:*}
+"
+    fi
+done <<EOF
+$FILES
+EOF
+if [ -n "$SECRETS" ]; then
+    fail "Hardcoded credential (file:line; value withheld). Read it from the environment and commit a .example instead:" "$SECRETS"
 fi
 
 # ---------------------------------------------------------------------------
