@@ -20,7 +20,11 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "ruff>=0.5",
+    # Pinned, not a floor: ruff gates CI, and `ruff format` output and the
+    # lint set both change between minor releases. A floor lets CI resolve to
+    # a version no developer has, which is the failure this pin exists to stop.
+    # Dependabot proposes the bump, CI proves it, everyone moves together.
+    "ruff==0.16.5",
 ]
 
 [tool.setuptools.packages.find]
