@@ -19,12 +19,28 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+  # ruff runs from this project's own dev dependencies, not from
+  # astral-sh/ruff-pre-commit. Two sources means two versions: the hook was
+  # pinned at v0.6.9 while CI installed `ruff>=0.5` and resolved to whatever
+  # was newest, and 60 lint rules exist in the selected families (E/F/W/I/B/
+  # UP/SIM/PTH/RUF) in 0.16.5 that do not exist in 0.6.9 -- every one of them
+  # a CI failure the hook cannot show you. `ruff` is on PATH after the
+  # `pip install -e '.[dev]'` in CONTRIBUTING.md, which is the same step that
+  # installs the version CI uses.
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff
+        entry: ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ruff-format
+        name: ruff-format
+        entry: ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
 
   # Strip notebook output: it makes diffs unreviewable and can carry
   # participant-level values.

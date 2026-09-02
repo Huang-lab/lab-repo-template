@@ -73,7 +73,11 @@ jobs:
           if [ -f pyproject.toml ]; then
             pip install -e '.[dev]'
           else
-            pip install -r requirements.txt pytest ruff
+            # No pyproject.toml means no dev extra to pin ruff in, so the pin
+            # has to live here. tests/test_tool_versions.py asserts this
+            # version and pyproject.toml's are the same string, so the two
+            # cannot drift apart unnoticed.
+            pip install -r requirements.txt pytest 'ruff==0.16.5'
           fi
       - name: Lint
         run: ruff check .
