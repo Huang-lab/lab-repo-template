@@ -24,7 +24,7 @@ dev = [
     # lint set both change between minor releases. A floor lets CI resolve to
     # a version no developer has, which is the failure this pin exists to stop.
     # Dependabot proposes the bump, CI proves it, everyone moves together.
-    "ruff==0.16.5",
+    "ruff==0.16.9",
 ]
 
 [tool.setuptools.packages.find]
