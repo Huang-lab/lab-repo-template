@@ -9,6 +9,7 @@ description = "<One sentence. Same as the GitHub description.>"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+dynamic = ["optional-dependencies"]
 dependencies = [
     # Pin ranges, not exact versions, for analysis code. Exact pins belong in a
     # lock file or environment.yml so a reader can reproduce a specific run.
@@ -16,16 +17,11 @@ dependencies = [
     # "numpy>=1.24",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
-    # Pinned, not a floor: ruff gates CI, and `ruff format` output and the
-    # lint set both change between minor releases. A floor lets CI resolve to
-    # a version no developer has, which is the failure this pin exists to stop.
-    # Dependabot proposes the bump, CI proves it, everyone moves together.
-    "ruff==0.16.5",
-]
+[tool.setuptools.dynamic.optional-dependencies]
+# The dev tools' versions live in requirements-dev.txt, the one file dependabot
+# edits and CI reads. Do not add a static `[project.optional-dependencies]`
+# table next to this: a second list is a second version.
+dev = { file = ["requirements-dev.txt"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
