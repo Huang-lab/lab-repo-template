@@ -35,6 +35,38 @@
 *.sav
 *.dta
 
+# ---- Single-cell, spatial and imaging data: same rule, newer formats ----
+# The genomics list above predates the lab's single-cell and spatial work.
+# Visium HD, snRNA and AnnData outputs land OUTSIDE /data/ (outs/, results/,
+# analysis/), where only extension rules apply, and none of these were caught.
+# Plain .tif/.tiff are deliberately not listed: figures use them. Raw
+# microscopy and whole-slide formats are. Force-add a real exception with
+# `git add -f`, which is a decision somebody makes on purpose.
+*.h5ad
+*.loom
+*.zarr/
+*.cloupe
+*.mtx
+*.mtx.gz
+barcodes.tsv
+barcodes.tsv.gz
+features.tsv
+features.tsv.gz
+genes.tsv
+genes.tsv.gz
+*.qs
+*.rda
+*.Rdata
+*.pkl
+*.pickle
+*.btf
+*.ome.tif
+*.ome.tiff
+*.svs
+*.ndpi
+*.czi
+*.nd2
+
 # ---- Cluster job output: never commit. See CONVENTIONS.md#data ----
 *.stdout
 *.stderr
@@ -47,7 +79,9 @@ lsf-*.out
 core.[0-9]*
 
 # ---- Agent session logs and local agent state ----
-.claude/
+# `.claude/*` not `.claude/`: git cannot re-include a file whose parent directory is
+# excluded, so with `.claude/` the negation below silently did nothing (tests/test_gitignore.py).
+.claude/*
 !.claude/settings.json
 .aider*
 .cursor/
@@ -88,7 +122,8 @@ ehthumbs.db
 desktop.ini
 
 # ---- Editors ----
-.vscode/
+# `.vscode/*` for the same reason as `.claude/*` above.
+.vscode/*
 !.vscode/extensions.json
 .idea/
 *.iml
