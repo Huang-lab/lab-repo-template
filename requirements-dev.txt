@@ -1,0 +1,15 @@
+# The one place the dev tools' versions are written down.
+#
+#   pip install -e '.[dev]'     reads this file (pyproject.toml's dev extra is dynamic)
+#   no pyproject.toml           CI installs `-r requirements.txt -r requirements-dev.txt`
+#   dependabot                  bumps the pin here, in one PR, and CI proves it
+#
+# A version named in a second file (ci.yml, pyproject.toml, a pre-commit `rev:`)
+# is a version dependabot cannot move, so every bump PR goes red until a human
+# edits it by hand. tests/test_tool_versions.py fails if one reappears.
+pytest>=9.1.1
+pytest-cov>=7.1.0
+# Pinned, not a floor: ruff gates CI, and `ruff format` output and the lint set
+# both change between minor releases. A floor lets CI resolve to a version no
+# developer has, which is the failure this pin exists to stop.
+ruff==0.16.9
