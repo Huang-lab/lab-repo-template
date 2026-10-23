@@ -26,7 +26,8 @@ These tests are deliberately dumb string checks rather than a YAML parse: they
 run with no dependency beyond pytest, in a repository whose whole point is to be
 copied into projects that may not want one.
 
-Mutation-checked: restoring either half of the split fails the matching test.
+Mutation-checked: restoring either half of the split fails the matching test, and so
+does writing the version into a second file (see the one-file test below).
 """
 
 import re
@@ -38,6 +39,7 @@ ROOT = Path(__file__).parent.parent
 PRE_COMMIT = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
+REQUIREMENTS_DEV = ROOT / "requirements-dev.txt"
 
 # Tools that gate CI and also run in a pre-commit hook, so a version split
 # between the two is invisible until the build goes red. Add to this when a
@@ -46,19 +48,16 @@ GATING_TOOLS = ["ruff"]
 
 
 def _dev_dependencies() -> list:
-    """The `dev` extra's requirement strings, read without tomllib.
+    """The requirement strings in requirements-dev.txt, the one pin file.
 
-    `tomllib` is 3.11+ and this template supports 3.10, so the block is sliced
-    out by hand. It is four lines of a file this repository owns.
+    `pyproject.toml`'s `dev` extra is dynamic and reads this file, so this is
+    also what `pip install -e '.[dev]'` installs.
     """
-    text = PYPROJECT.read_text()
-    match = re.search(r"^dev\s*=\s*\[(.*?)^\]", text, re.MULTILINE | re.DOTALL)
-    assert match, "pyproject.toml has no `dev = [...]` block"
     reqs = []
-    for line in match.group(1).splitlines():
-        line = line.split("#", 1)[0].strip().rstrip(",").strip()
-        if line.startswith(('"', "'")):
-            reqs.append(line.strip("\"'"))
+    for line in REQUIREMENTS_DEV.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            reqs.append(line)
     return reqs
 
 
@@ -70,7 +69,7 @@ def test_gating_tool_is_pinned_exactly(tool):
     different linters, and so does CI.
     """
     reqs = [r for r in _dev_dependencies() if re.match(rf"^{tool}\b", r)]
-    assert reqs, f"{tool} is not in the dev extra of pyproject.toml"
+    assert reqs, f"{tool} is not in requirements-dev.txt"
     for req in reqs:
         assert "==" in req, (
             f"{req!r} is a floor, not a pin. CI resolves it to whatever is "
@@ -81,7 +80,7 @@ def test_gating_tool_is_pinned_exactly(tool):
 
 @pytest.mark.parametrize("tool", GATING_TOOLS)
 def test_gating_tool_has_no_second_version_in_pre_commit(tool):
-    """No remote pre-commit hook supplies a tool the dev extra already pins.
+    """No remote pre-commit hook supplies a tool requirements-dev.txt already pins.
 
     A `rev:` in `.pre-commit-config.yaml` is a second, independent version of
     the same binary, and nothing keeps the two in step -- dependabot does not
@@ -95,7 +94,7 @@ def test_gating_tool_has_no_second_version_in_pre_commit(tool):
         if line.strip().startswith("- repo:") and tool in line
     ]
     assert not offenders, (
-        f"{offenders} pins its own {tool}, while pyproject.toml pins another. "
+        f"{offenders} pins its own {tool}, while requirements-dev.txt pins another. "
         f"Use a `repo: local` hook with `entry: {tool} ...` and "
         f"`language: system` so the hook and CI are the same binary."
     )
@@ -141,22 +140,51 @@ def test_ci_does_not_install_the_tool_unpinned(tool):
 
 
 @pytest.mark.parametrize("tool", GATING_TOOLS)
-def test_every_named_version_of_the_tool_agrees(tool):
-    """One version string, however many files have to name it.
+def test_exactly_one_file_names_a_version_of_the_tool(tool):
+    """The version is written once, in requirements-dev.txt, and nowhere else.
 
-    A repository with no pyproject.toml has nowhere else to pin a dev tool, so
-    ci.yml names the version too. Two mentions are fine; two *versions* are the
-    bug. This is the assertion that keeps them honest.
+    This replaces an assertion that every file naming a version named the same
+    one. That held the line against drift but made every dependabot bump fail:
+    dependabot edits one manifest per pull request, so a version also written
+    in ci.yml could never be moved by the bot, and the bump went red for a
+    reason no bot can fix (lab-repo-template #9, ruff 0.16.5 -> 0.16.9, where
+    `ruff check` and `ruff format --check` both passed and only this test
+    failed). One file means one edit, and dependabot makes it.
     """
     named = {}
-    for path in (PYPROJECT, CI, PRE_COMMIT):
+    for path in (REQUIREMENTS_DEV, PYPROJECT, CI, PRE_COMMIT):
         versions = _versions_named(tool, path)
         if versions:
             named[path.name] = versions
-    assert named, f"nothing pins {tool}"
-    distinct = set().union(*named.values())
-    assert len(distinct) == 1, (
-        f"{tool} is pinned to more than one version: {named}. "
-        f"Pick one; the whole point is that the hook, CI and a developer's "
-        f"install are the same binary."
+    assert list(named) == [REQUIREMENTS_DEV.name], (
+        f"{tool} must be pinned in {REQUIREMENTS_DEV.name} and nowhere else, "
+        f"but it is named in {named}. A version in a second file is one "
+        f"dependabot cannot move."
     )
+
+
+def test_pyproject_reads_the_dev_extra_from_the_pin_file():
+    """`pip install -e '.[dev]'` and the no-pyproject CI branch install the same bytes.
+
+    A static `[project.optional-dependencies]` table next to the dynamic one is
+    not valid, but a tidy-up that replaces the dynamic entry with a static list
+    would be, and would quietly make `.[dev]` and requirements-dev.txt two lists
+    again. Check the wiring, not just the contents.
+    """
+    text = PYPROJECT.read_text()
+    assert re.search(r'^dynamic\s*=\s*\[[^\]]*"optional-dependencies"', text, re.MULTILINE), (
+        'pyproject.toml must declare dynamic = ["optional-dependencies"]'
+    )
+    assert re.search(
+        r'^dev\s*=\s*\{\s*file\s*=\s*\[\s*"requirements-dev\.txt"\s*\]\s*\}', text, re.MULTILINE
+    ), 'the dev extra must be `dev = { file = ["requirements-dev.txt"] }`'
+    assert not re.search(r"^\[project\.optional-dependencies\]", text, re.MULTILINE), (
+        "a static optional-dependencies table is a second list of dev tools"
+    )
+
+
+def test_ci_fallback_installs_the_pin_file():
+    """A repo with no pyproject.toml gets the same pinned tools, not whatever is newest."""
+    assert re.search(
+        r"pip install[^\n]*-r requirements\.txt[^\n]*-r requirements-dev\.txt", CI.read_text()
+    ), "the no-pyproject branch of ci.yml must install -r requirements-dev.txt"
