@@ -3,3 +3,14 @@
 data/README.md
 results/README.md
 CONVENTIONS.md
+
+# The detector test is made of the strings the detectors look for (a PEM header, a
+# quoted credential, a /Users path, invented Workbench identifiers). Since the scan
+# applies this file, it has to be listed, as it is in .hygieneignore. A repository
+# that copies tests/test_secret_patterns.sh needs this line too.
+tests/test_secret_patterns.sh
+
+# The Rust example's doctest and integration test use genomic coordinates
+# of the form chrN:position, which the 8-digit rule reads as a record number.
+crates/example/src/lib.rs
+crates/example/tests/integration.rs

@@ -19,6 +19,10 @@
 # Usage: ./scripts/scan_history.sh [--full]
 #   default  scan deleted files and blob names across history (fast)
 #   --full   also grep every blob's content (slow: minutes on a large repo)
+#
+# Exit status: 0 when nothing was found, 1 when anything was, so that CI or a
+# pre-push hook can gate on it. Paths listed in .scanignore are left out of every
+# content scan below.
 
 set -uo pipefail
 
@@ -70,8 +74,47 @@ PATTERNS=(
     '://[^/[:space:]:@]+:[^/[:space:]@]+@'
 )
 
-# Paths excluded from the content scan: the scanner itself, plus anything listed
-# one pathspec per line in .scanignore (documentation that quotes paths as
+# All of Us Researcher Workbench identifiers. The lab's primer forbids committing
+# them ("workspace identifiers", AOU_research_primer/CONTRIBUTING.md).
+#   wb-<word>-<word>-<4 digits>   a workspace's Google project (a fifth digit directly
+#                                 after the four is not this shape)
+#   aou-rw-<8 hex>               a workspace namespace, as it appears in a workspace URL
+#   fc-secure-<uuid>, fc-<uuid>  a workspace bucket
+# POSIX ERE like the patterns above, kept apart because a hit is reported as
+# path:line and never as text: the identifier is the secret, and a scan that runs
+# in CI would print it into a log. Placeholders (`wb-xxxx-xxxx`, `aou-rw-xxxxxxxx`)
+# and the shared dataset names (`fc-aou-cdr-prod-ct`, `gs://fc-aou-datasets-controlled`)
+# do not match, so documentation can still show what the shapes look like.
+# check_hygiene.sh carries the same string; tests/test_secret_patterns.sh checks they agree.
+ID_RE='(^|[^a-z0-9])wb-[a-z]+(-[a-z]+){1,2}-[0-9]{4}([^0-9]|$)|aou-rw-[0-9a-f]{8}|fc-(secure-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+# A participant-level column in a notebook's stored OUTPUT. `person_id` is also the
+# key in the SQL of source cells, which is fine, so only the lines inside an
+# "outputs": [ ... ] array are read. A notebook that is not pretty-printed has no
+# such line to anchor on; then the whole file is read, which errs toward failing.
+# Reads one notebook on stdin and succeeds when an output names the column.
+# (No `grep -q`: with pipefail an early exit would turn a match into awk's SIGPIPE.)
+# check_hygiene.sh carries the same function; the test checks they agree.
+nb_output_names_person_id() {
+    awk '
+        { if (!anchored) all[NR] = $0 }
+        !inside && /^[[:space:]]*"outputs": \[/ {
+            anchored = 1
+            if ($0 ~ /\[[[:space:]]*$/) { match($0, /^[[:space:]]*/); depth = RLENGTH; inside = 1 }
+            else print
+            next
+        }
+        inside {
+            match($0, /^[[:space:]]*/)
+            if (RLENGTH == depth && $0 ~ /^[[:space:]]*\],?[[:space:]]*$/) { inside = 0; next }
+            print
+        }
+        END { if (!anchored) for (i = 1; i <= NR; i++) print all[i] }
+    ' | grep -iE '(^|[^A-Za-z0-9_])person_id([^A-Za-z0-9_]|$)' >/dev/null
+}
+
+# Paths excluded from every content scan below: the scanner itself, plus anything
+# listed one pathspec per line in .scanignore (documentation that quotes paths as
 # examples, test fixtures with synthetic identifiers).
 EXCLUDES=(':!scripts/scan_history.sh' ':!scripts/check_hygiene.sh')
 if [ -f .scanignore ]; then
@@ -104,15 +147,32 @@ else
 fi
 
 hdr "3. Sensitive patterns in the current tree"
+SEC=0
 for p in "${PATTERNS[@]}"; do
-    hits=$(git grep -nIE "$p" -- ':!scripts/scan_history.sh' ':!scripts/check_hygiene.sh' 2>/dev/null | head -5 || true)
+    hits=$(git grep -nIE "$p" -- "${EXCLUDES[@]}" 2>/dev/null | head -5 || true)
     if [ -n "$hits" ]; then
         red "pattern: $p"
         printf '%s\n' "$hits"
-        FOUND=1
+        FOUND=1; SEC=1
     fi
 done
-[ "$FOUND" -eq 0 ] && ok "None in the current tree."
+hits=$(git grep -nIE "$ID_RE" -- "${EXCLUDES[@]}" 2>/dev/null | cut -d: -f1,2 | head -10 || true)
+if [ -n "$hits" ]; then
+    red "Workbench identifier (path:line, value withheld)"
+    printf '%s\n' "$hits"
+    FOUND=1; SEC=1
+fi
+hits=""
+while IFS= read -r f; do
+    nb_output_names_person_id <"$f" && hits="$hits$f
+"
+done < <(git grep -lIiE 'person_id' -- '*.ipynb' "${EXCLUDES[@]}" 2>/dev/null)
+if [ -n "$hits" ]; then
+    red "Notebook output names a participant-level column (person_id), file:"
+    printf '%s' "$hits"
+    FOUND=1; SEC=1
+fi
+[ "$SEC" -eq 0 ] && ok "None in the current tree."
 
 if [ "$FULL" -eq 1 ]; then
     hdr "4. Sensitive patterns across ALL history (slow)"
@@ -120,16 +180,40 @@ if [ "$FULL" -eq 1 ]; then
     if [ -z "$REVS" ]; then
         ok "No commits."
     else
+        SEC=0
         for p in "${PATTERNS[@]}"; do
             # shellcheck disable=SC2086
-            hits=$(git grep -nIE "$p" $REVS -- ':!scripts/scan_history.sh' ':!scripts/check_hygiene.sh' 2>/dev/null | head -5 || true)
+            hits=$(git grep -nIE "$p" $REVS -- "${EXCLUDES[@]}" 2>/dev/null | head -5 || true)
             if [ -n "$hits" ]; then
                 red "pattern: $p"
                 printf '%s\n' "$hits"
-                FOUND=1
+                FOUND=1; SEC=1
             fi
         done
-        [ "$FOUND" -eq 0 ] && ok "None anywhere in history."
+        # Identifiers: how many commits hold each path:line, never the text.
+        # shellcheck disable=SC2086
+        hits=$(git grep -nIE "$ID_RE" $REVS -- "${EXCLUDES[@]}" 2>/dev/null | cut -d: -f2,3 | sort | uniq -c | sort -rn | head -10 || true)
+        if [ -n "$hits" ]; then
+            red "Workbench identifier (commits, path:line, value withheld)"
+            printf '%s\n' "$hits"
+            FOUND=1; SEC=1
+        fi
+        # Notebook outputs: each distinct stored version is read once.
+        SEEN=" "
+        hits=""
+        while IFS= read -r rp; do
+            blob=$(git rev-parse -q --verify "$rp" 2>/dev/null) || continue
+            case "$SEEN" in *" $blob "*) continue ;; esac
+            SEEN="$SEEN$blob "
+            git cat-file blob "$blob" | nb_output_names_person_id && hits="$hits${rp#*:}
+"
+        done < <(git grep -lIiE 'person_id' $REVS -- '*.ipynb' "${EXCLUDES[@]}" 2>/dev/null)
+        if [ -n "$hits" ]; then
+            red "Notebook output names a participant-level column (person_id), stored versions and file:"
+            printf '%s' "$hits" | sort | uniq -c | sort -rn | head -10
+            FOUND=1; SEC=1
+        fi
+        [ "$SEC" -eq 0 ] && ok "None anywhere in history."
     fi
 else
     hdr "4. Full-history content scan"
@@ -155,4 +239,4 @@ cat <<'TXT'
   5. If the repo was ever public, treat the content as public permanently.
 TXT
 
-exit 0
+exit "$FOUND"

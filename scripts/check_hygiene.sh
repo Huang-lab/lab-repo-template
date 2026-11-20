@@ -170,6 +170,36 @@ if [ -n "$PATHS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 5b. All of Us Researcher Workbench identifiers: a workspace's Google project
+#     (wb-<word>-<word>-<digits>), its namespace (aou-rw-<8 hex>) and its bucket
+#     (fc-secure-<uuid>). The lab's primer forbids committing them ("workspace
+#     identifiers"), and the checks above read none of these shapes.
+#
+#     Every tracked file counts, notebooks and docs included, because the
+#     identifier is just as public in a README. Reported as file:line, never as
+#     text, since this runs in CI and a CI log is public too. Placeholders
+#     (wb-xxxx-xxxx, aou-rw-xxxxxxxx) do not match. The same string is in
+#     scan_history.sh, which looks for it in history; the test checks they agree.
+# ---------------------------------------------------------------------------
+ID_RE='(^|[^a-z0-9])wb-[a-z]+(-[a-z]+){1,2}-[0-9]{4}([^0-9]|$)|aou-rw-[0-9a-f]{8}|fc-(secure-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+WBIDS=""
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    allowed "$f" && continue
+    case "$f" in scripts/check_hygiene.sh|scripts/scan_history.sh) continue ;; esac
+    hit=$(grep -nEIm1 "$ID_RE" "$f" 2>/dev/null || true)
+    if [ -n "$hit" ]; then
+        WBIDS="$WBIDS$f:${hit%%:*}
+"
+    fi
+done <<EOF
+$FILES
+EOF
+if [ -n "$WBIDS" ]; then
+    fail "All of Us workspace identifier (file:line; value withheld). Read it from the environment (WORKSPACE_CDR and friends), and use xxxx in docs:" "$WBIDS"
+fi
+
+# ---------------------------------------------------------------------------
 # 6. Unanchored directory patterns in .gitignore.
 #    A bare `tests/` matches at ANY depth. In fastVEP it silently hid four
 #    integration test files under crates/*/tests/ from every fresh clone, while
@@ -185,21 +215,56 @@ fi
 
 # ---------------------------------------------------------------------------
 # 7. Notebooks with output cells. Output makes diffs unreviewable and can
-#    contain participant-level values.
+#    contain participant-level values. Output that names `person_id` is such a
+#    table of participants, so it fails; other output only warns.
+#
+#    `person_id` is also the key in the SQL of source cells, which is fine, so
+#    only the lines inside an "outputs": [ ... ] array are read. A notebook that
+#    is not pretty-printed has no such line to anchor on; then the whole file is
+#    read, which errs toward failing. (No `grep -q`: with pipefail an early exit
+#    would turn a match into awk's SIGPIPE.) scan_history.sh carries the same
+#    function, for history; the test checks they agree.
 # ---------------------------------------------------------------------------
+nb_output_names_person_id() {
+    awk '
+        { if (!anchored) all[NR] = $0 }
+        !inside && /^[[:space:]]*"outputs": \[/ {
+            anchored = 1
+            if ($0 ~ /\[[[:space:]]*$/) { match($0, /^[[:space:]]*/); depth = RLENGTH; inside = 1 }
+            else print
+            next
+        }
+        inside {
+            match($0, /^[[:space:]]*/)
+            if (RLENGTH == depth && $0 ~ /^[[:space:]]*\],?[[:space:]]*$/) { inside = 0; next }
+            print
+        }
+        END { if (!anchored) for (i = 1; i <= NR; i++) print all[i] }
+    ' | grep -iE '(^|[^A-Za-z0-9_])person_id([^A-Za-z0-9_]|$)' >/dev/null
+}
+
 NB=$(printf '%s\n' "$FILES" | grep -E '\.ipynb$' || true)
 NB_WITH_OUTPUT=""
+NB_WITH_PERSON=""
 if [ -n "$NB" ]; then
     while IFS= read -r f; do
         [ -f "$f" ] || continue
         allowed "$f" && continue
         if grep -q '"output_type"' "$f" 2>/dev/null; then
-            NB_WITH_OUTPUT="$NB_WITH_OUTPUT$f
+            if nb_output_names_person_id <"$f"; then
+                NB_WITH_PERSON="$NB_WITH_PERSON$f
 "
+            else
+                NB_WITH_OUTPUT="$NB_WITH_OUTPUT$f
+"
+            fi
         fi
     done <<EOF
 $NB
 EOF
+fi
+if [ -n "$NB_WITH_PERSON" ]; then
+    fail "Notebook output names a participant-level column (person_id). Strip the output (nbstripout) before committing:" "$NB_WITH_PERSON"
 fi
 if [ -n "$NB_WITH_OUTPUT" ]; then
     warn "WARN: notebooks with stored output (nbstripout, or build them from builders/*.py):"
